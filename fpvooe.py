@@ -113,7 +113,10 @@ def get_weather(city: str, date_offset=0):
         city_timezone = datetime.timezone(datetime.timedelta(seconds=data["city"]["timezone"]))
         sunrise = datetime.datetime.fromtimestamp(data["city"]["sunrise"], tz=city_timezone)
         sunset = datetime.datetime.fromtimestamp(data["city"]["sunset"], tz=city_timezone)
-
+        # Das Datum von Sonnenaufgang und Sonnenuntergang anpassen damit es mit dem ausgewählten Datum übereinstimmt
+        sunrise = sunrise.replace(year=selected_date.year, month=selected_date.month, day=selected_date.day)
+        sunset = sunset.replace(year=selected_date.year, month=selected_date.month, day=selected_date.day)
+        
         # Wetterdaten für den ausgewählten Tag filtern
         daily_forecast = [
             entry for entry in forecast
@@ -124,20 +127,16 @@ def get_weather(city: str, date_offset=0):
             return None, "⚠️ Keine Wetterdaten für dieses Datum verfügbar."
 
         best_time = None
-        best_score = float("-inf")  # Je höher der Score, desto besser
-
+        best_score = float(-100)  # Je höher der Score, desto besser
         temps, winds, rains, times = [], [], [], []
 
         for entry in daily_forecast:
+            print(f'best_score: {best_score}')
+
             temp = entry["main"]["temp"]
             wind_speed = entry["wind"]["speed"]
             rain = entry.get("rain", {}).get("3h", 0)
             time_obj = datetime.datetime.fromtimestamp(entry["dt"], tz=city_timezone)
-
-            # Nur Zeiten zwischen Sonnenaufgang und Sonnenuntergang berücksichtigen
-            if time_obj < sunrise or time_obj > sunset:
-                continue
-
             time_str = time_obj.strftime("%H:%M")
 
             temps.append(temp)
@@ -150,10 +149,12 @@ def get_weather(city: str, date_offset=0):
                 wind_score = -wind_speed  # Niedriger Wind ist besser
                 temp_score = -abs(temp - 25)  # Näher an 25°C ist besser
                 total_score = wind_score + temp_score  # Gesamtbewertung
+                #print(f'total_score for {time_str}: {total_score}!')
 
-                if total_score > best_score:
+                if total_score > best_score and (time_obj > sunrise and time_obj < sunset):
                     best_score = total_score
                     best_time = time_str
+                    #print(f'best_time set for {time_str} to {best_time}. Score: {best_score}!')
 
         # Diagramm erstellen
         plt.figure(figsize=(6, 4))
@@ -181,7 +182,6 @@ def get_weather(city: str, date_offset=0):
         return img_buf, weather_report
 
     return None, "⚠️ Konnte die Wetterdaten nicht abrufen. Stelle sicher, dass der Stadtname korrekt ist."
-
         
 
 client.run(TOKEN)
