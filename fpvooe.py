@@ -5,6 +5,7 @@ import requests
 import datetime
 import matplotlib.pyplot as plt
 from io import BytesIO
+import aiocron
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv #pip install python-dotenv
@@ -20,6 +21,9 @@ PRESENT_CHANNEL_ID = os.getenv("PRESENT_CHANNEL_ID")  # ID des Kanals, in dem de
 #CHANNEL_ID = 1259559371801886832  # Testchannel
 ROLE_ID = os.getenv("ROLE_ID")  # ID der Rolle, die vergeben werden soll
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+ADMIN_CHANNEL_ID = os.getenv("ADMIN_CHANNEL_ID")
+ADMIN_ROLE_ID = os.getenv("ADMIN_ROLE_ID")
+MOD_ROLE_ID = os.getenv("MOD_ROLE_ID") 
 
 # Discord-Client initialisieren
 intents = discord.Intents.default()
@@ -28,7 +32,7 @@ intents.guilds = True
 intents.members = True
 intents.message_content = True  # Wichtig für das Lesen von Nachrichten!
 
-client = commands.Bot(command_prefix=None,intents=intents)
+client = commands.Bot(command_prefix="",intents=intents)
 
 
 
@@ -37,6 +41,12 @@ client = commands.Bot(command_prefix=None,intents=intents)
 async def on_ready():
     print(f'✅ Bot ist online als {client.user}!')
     await client.tree.sync()  # Sicherstellen, dass die Slash-Commands auf Discord synchronisiert werden
+    print("🌐 Slash-Commands wurden synchronisiert!")
+
+     # Starte den Cron-Job für jeden Sonntag um 20 Uhr
+    aiocron.crontab("0 20 * * SUN", func=verifyreport) #jeden Sonntag um 20 Uhr
+    print("🕗 Cron-Job wurde gestartet!")
+
 
 @client.event
 async def handle_message(message):
@@ -183,5 +193,54 @@ def get_weather(city: str, date_offset=0):
 
     return None, "⚠️ Konnte die Wetterdaten nicht abrufen. Stelle sicher, dass der Stadtname korrekt ist."
         
+# Prüft alle User, die sich noch nicht verifiziert haben und sendet eine Nachricht an den Admin-Channel mit einem kleinen Bericht
+@client.tree.command(name="verifyreport", description="Schreibt einen Userreport in den Admin-Channel")
+async def verifyreport(interaction: discord.Interaction):
+    guild = interaction.guild
+    #Admin-Channel
+    channel = interaction.guild.get_channel(ADMIN_CHANNEL_ID)
+    channel = interaction.client.get_channel(ADMIN_CHANNEL_ID)
 
+    if channel is None:
+        channel = await interaction.client.fetch_channel(ADMIN_CHANNEL_ID)
+
+    #Wer hat den Befehl ausgeführt?
+    member = interaction.user 
+
+    if int(ADMIN_ROLE_ID) not in [role.id for role in member.roles] or int(MOD_ROLE_ID) not in [role.id for role in member.roles]:
+        msg = await channel.send("Du hast keine Berechtigung für diesen Befehl!")
+        await asyncio.sleep(10)  # Warte 10 Sekunden
+        await msg.delete()  # Lösche die Nachricht
+
+    unverifiedUsersStrings = []
+    for member in guild.members:
+        #Hat der User die Rolle?
+        hat_rolle = False
+        for role in member.roles:
+            if role.id == int(ROLE_ID):
+                hat_rolle = True
+                break
+
+        if not hat_rolle:
+            unverifiedUsersStrings.append(f"'{member.name}' hat sich nicht verifiziert. Am Server seit: {member.joined_at}.")
+
+    if unverifiedUsersStrings:
+        bericht = "**📢 User, die sich noch nicht verifiziert haben:**\n" + "\n".join(unverifiedUsersStrings)
+    else:
+        bericht = "✅ Alle User erfüllen die Anforderungen!"
+
+    #Falls der Bericht mehr als 1999 Zeichen hat, teile ihn in mehrere Nachrichten auf
+    if len(bericht) > 1999:
+        while len(bericht) > 1999:
+            await channel.send(bericht[:1999])
+            bericht = bericht[1999:]
+        await channel.send(bericht)
+    else:
+
+        await channel.send(bericht)
+
+
+
+
+# Starte den Discord-Client
 client.run(TOKEN)
