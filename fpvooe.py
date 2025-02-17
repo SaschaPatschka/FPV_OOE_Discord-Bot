@@ -49,9 +49,11 @@ async def on_ready():
 
 
 @client.event
-async def handle_message(message):
+async def on_message(message):
     if message.author.bot:
         return  # Ignoriere Bots
+    
+    print(f"New message: {message}")
 
     if message.channel.id != PRESENT_CHANNEL_ID:
         return  # Nur in dem gewünschten Kanal reagieren Kanal #new-vorstellungsrunde
