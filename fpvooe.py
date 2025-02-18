@@ -70,6 +70,7 @@ async def on_message(message):
 @client.tree.command(name="flugwetter", description="Zeigt das Flugwetter für eine Stadt an")
 @app_commands.describe(stadt="Die Stadt, für die du das Wetter wissen willst (max. 5 Tage)", datum="Datum im Format 01.12.2025 oder 'morgen', 'übermorgen'")
 async def flugwetter(interaction: discord.Interaction, stadt: str, datum: str = "heute"):
+    interaction.response.send_message("🔍 Suche nach Wetterdaten...", ephemeral=True)
     date_offset = 0
     if datum.lower() == "morgen":
         date_offset = 1
@@ -83,18 +84,18 @@ async def flugwetter(interaction: discord.Interaction, stadt: str, datum: str = 
             today = datetime.datetime.now(datetime.timezone.utc).date()
             date_offset = (date_obj - today).days
             if date_offset < 0:
-                await interaction.response.send_message("⚠️ Das Datum liegt in der Vergangenheit!", ephemeral=True)
+                await interaction.response.edit_message("⚠️ Das Datum liegt in der Vergangenheit!", ephemeral=True)
                 return
         except ValueError:
-            await interaction.response.send_message("⚠️ Ungültiges Datumsformat! Bitte nutze: `01.12.2025`, `morgen` oder `übermorgen`.", ephemeral=True)
+            await interaction.response.edit_message("⚠️ Ungültiges Datumsformat! Bitte nutze: `01.12.2025`, `morgen` oder `übermorgen`.", ephemeral=True)
             return
     
     img_buf, weather_info = get_weather(stadt, date_offset)
     if img_buf:
         file = discord.File(img_buf, filename="weather.png")
-        await interaction.response.send_message(weather_info, file=file)
+        await interaction.response.edit_message(weather_info, file=file, ephemeral=False)
     else:
-        await interaction.response.send_message(weather_info)
+        await interaction.response.edit_message(weather_info, ephemeral=False)
 
 
 
