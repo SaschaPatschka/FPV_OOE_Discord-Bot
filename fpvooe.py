@@ -15,15 +15,19 @@ from dotenv import load_dotenv #pip install python-dotenv
 load_dotenv("secrets.env")
 load_dotenv("variables.env")
 
-TOKEN = os.getenv("TOKEN")
-GUILD_ID = os.getenv("GUILD_ID")  # Deine Server-ID
-PRESENT_CHANNEL_ID = os.getenv("PRESENT_CHANNEL_ID")  # ID des Kanals, in dem der Bot aktiv sein soll
+def get_env_int(var_name, default=0):
+    value = os.getenv(var_name)
+    return int(value) if value and value.isdigit() else default
+
+TOKEN = get_env_int("TOKEN")
+GUILD_ID = get_env_int("GUILD_ID")  # Deine Server-ID
+PRESENT_CHANNEL_ID = get_env_int("PRESENT_CHANNEL_ID")  # ID des Kanals, in dem der Bot aktiv sein soll
 #CHANNEL_ID = 1259559371801886832  # Testchannel
-ROLE_ID = os.getenv("ROLE_ID")  # ID der Rolle, die vergeben werden soll
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-ADMIN_CHANNEL_ID = os.getenv("ADMIN_CHANNEL_ID")
-ADMIN_ROLE_ID = os.getenv("ADMIN_ROLE_ID")
-MOD_ROLE_ID = os.getenv("MOD_ROLE_ID") 
+ROLE_ID = get_env_int("ROLE_ID")  # ID der Rolle, die vergeben werden soll
+WEATHER_API_KEY = get_env_int("WEATHER_API_KEY")
+ADMIN_CHANNEL_ID = get_env_int("ADMIN_CHANNEL_ID")
+ADMIN_ROLE_ID = get_env_int("ADMIN_ROLE_ID")
+MOD_ROLE_ID = get_env_int("MOD_ROLE_ID") 
 
 # Discord-Client initialisieren
 intents = discord.Intents.default()
@@ -33,7 +37,6 @@ intents.members = True
 intents.message_content = True  # Wichtig für das Lesen von Nachrichten!
 
 client = commands.Bot(command_prefix="",intents=intents)
-
 
 
 
@@ -58,26 +61,9 @@ async def on_message(message):
     if message.channel.id != PRESENT_CHANNEL_ID:
         return  # Nur in dem gewünschten Kanal reagieren Kanal #new-vorstellungsrunde
 
-    if len(message.content) < 100:
-        msg = await message.channel.send(f"Komm schon {message.author.mention}, erzähle doch ein bischen mehr von dir! Bitte bearbeite die Nachricht nochmal.")
+    await handle_verification(message)
 
-        await asyncio.sleep(10)  # Warte 10 Sekunden
-        await msg.delete()  # Lösche die Nachricht
-        return  # Nur Nachrichten mit mindestens 100 Zeichen verarbeiten
-
-    guild = client.get_guild(GUILD_ID)
-    member = guild.get_member(message.author.id)
-
-    if ROLE_ID not in [role.id for role in member.roles]:  # Falls Rolle noch nicht vergeben
-        role = guild.get_role(ROLE_ID)
-        await member.add_roles(role)
-        msg = await message.channel.send(f"🎉 Super {message.author.mention},du wurdest verifiziert und hast jetzt Zugriff auf alle Kanäle.!")
-
-        await asyncio.sleep(10)  # Warte 10 Sekunden
-        # Reagiere mit Daumen Hoch auf die Nachricht des Users
-        await message.add_reaction("👍")
-        await msg.delete()  # Lösche die Nachricht
-
+    await client.process_commands(message)  # Befehle weiterhin verarbeiten
 
 
 # Slash-Command für Wetter
@@ -109,6 +95,36 @@ async def flugwetter(interaction: discord.Interaction, stadt: str, datum: str = 
         await interaction.response.send_message(weather_info, file=file)
     else:
         await interaction.response.send_message(weather_info)
+
+
+
+async def handle_verification(message):
+    guild = client.get_guild(GUILD_ID)
+    member = guild.get_member(message.author.id)
+    
+    if ROLE_ID not in [role.id for role in member.roles]:  # Falls Rolle noch nicht vergeben
+        if len(message.content) < 100:
+            await send_temp_message(message.channel, f"Komm schon {message.author.mention}, erzähle doch ein bischen mehr von dir! Bitte bearbeite die Nachricht nochmal.")
+            return  # Nur Nachrichten mit mindestens 100 Zeichen verarbeiten
+        
+        role = guild.get_role(ROLE_ID)
+        await member.add_roles(role)
+        msg = await message.channel.send(f"🎉 Super {message.author.mention}, du wurdest verifiziert und hast jetzt Zugriff auf alle Kanäle!")
+        await message.add_reaction("👍")
+        await asyncio.sleep(10)
+        await msg.delete()
+    else:
+        await send_temp_message(message.channel, f"🚫 Hallo {message.author.mention}, dieser Kanal ist nicht zum Plaudern gedacht, bitte nutze einen anderen Kanal. Danke!")
+
+
+
+
+
+# Sendet eine temporäre Nachricht in einen Kanal und löscht sie nach einer bestimmten Zeit
+async def send_temp_message(channel, content, delay=10):
+    msg = await channel.send(content)
+    await asyncio.sleep(delay)
+    await msg.delete()
 
 
 # Wetter abrufen
