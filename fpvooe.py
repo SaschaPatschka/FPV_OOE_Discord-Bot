@@ -80,7 +80,7 @@ async def on_message(message):
 @app_commands.describe(stadt="Die Stadt, für die du das Wetter wissen willst (max. 5 Tage)", datum="Datum im Format 01.12.2025 oder 'morgen', 'übermorgen'")
 async def flugwetter(interaction: discord.Interaction, stadt: str, datum: str = "heute"):
     await interaction.response.defer(ephemeral=True)
-    await interaction.followup.send(content="🔍 Suche nach Wetterdaten...")
+    #await interaction.followup.send(content="🔍 Suche nach Wetterdaten...")
     date_offset = 0
     if datum.lower() == "morgen":
         date_offset = 1
@@ -94,10 +94,12 @@ async def flugwetter(interaction: discord.Interaction, stadt: str, datum: str = 
             today = datetime.datetime.now(datetime.timezone.utc).date()
             date_offset = (date_obj - today).days
             if date_offset < 0:
-                await interaction.followup.send(content="⚠️ Das Datum liegt in der Vergangenheit!")
+                await interaction.followup.send(content="⚠️ Das Datum liegt in der Vergangenheit!", ephemeral=True)
+                print(f"Wrong Date offset: {date_offset}")
                 return
         except ValueError:
-            await interaction.followup.send(content="⚠️ Ungültiges Datumsformat! Bitte nutze: `01.12.2025`, `morgen` oder `übermorgen`.")
+            await interaction.followup.send(content="⚠️ Ungültiges Datumsformat! Bitte nutze folgende Formate: `25.07.2025`, `morgen` oder `übermorgen`.", ephemeral=True)
+            print(f"Wrong Date format: {datum}")
             return
     
     img_buf, weather_info = get_weather(stadt, date_offset)
