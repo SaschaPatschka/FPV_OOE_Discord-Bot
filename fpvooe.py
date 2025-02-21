@@ -19,12 +19,13 @@ def get_env_int(var_name, default=0):
     value = os.getenv(var_name)
     return int(value) if value and value.isdigit() else default
 
-TOKEN = get_env_int("TOKEN")
+VERSION = "1.3"
+TOKEN = os.getenv("TOKEN")
 GUILD_ID = get_env_int("GUILD_ID")  # Deine Server-ID
 PRESENT_CHANNEL_ID = get_env_int("PRESENT_CHANNEL_ID")  # ID des Kanals, in dem der Bot aktiv sein soll
 #CHANNEL_ID = 1259559371801886832  # Testchannel
 ROLE_ID = get_env_int("ROLE_ID")  # ID der Rolle, die vergeben werden soll
-WEATHER_API_KEY = get_env_int("WEATHER_API_KEY")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 ADMIN_CHANNEL_ID = get_env_int("ADMIN_CHANNEL_ID")
 ADMIN_ROLE_ID = get_env_int("ADMIN_ROLE_ID")
 MOD_ROLE_ID = get_env_int("MOD_ROLE_ID") 
@@ -39,7 +40,7 @@ intents.message_content = True  # Wichtig für das Lesen von Nachrichten!
 client = commands.Bot(command_prefix="",intents=intents)
 
 
-
+######### EVENT HANDLING #########
 @client.event
 async def on_ready():
     print(f'✅ Bot ist online als {client.user}!')
@@ -66,11 +67,20 @@ async def on_message(message):
     await client.process_commands(message)  # Befehle weiterhin verarbeiten
 
 
+
+
+
+
+
+
+######### SLASH-COMMANDS #########
+
 # Slash-Command für Wetter
 @client.tree.command(name="flugwetter", description="Zeigt das Flugwetter für eine Stadt an")
 @app_commands.describe(stadt="Die Stadt, für die du das Wetter wissen willst (max. 5 Tage)", datum="Datum im Format 01.12.2025 oder 'morgen', 'übermorgen'")
 async def flugwetter(interaction: discord.Interaction, stadt: str, datum: str = "heute"):
-    interaction.response.send_message("🔍 Suche nach Wetterdaten...", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send(content="🔍 Suche nach Wetterdaten...")
     date_offset = 0
     if datum.lower() == "morgen":
         date_offset = 1
@@ -84,20 +94,79 @@ async def flugwetter(interaction: discord.Interaction, stadt: str, datum: str = 
             today = datetime.datetime.now(datetime.timezone.utc).date()
             date_offset = (date_obj - today).days
             if date_offset < 0:
-                await interaction.response.edit_message("⚠️ Das Datum liegt in der Vergangenheit!", ephemeral=True)
+                await interaction.followup.send(content="⚠️ Das Datum liegt in der Vergangenheit!")
                 return
         except ValueError:
-            await interaction.response.edit_message("⚠️ Ungültiges Datumsformat! Bitte nutze: `01.12.2025`, `morgen` oder `übermorgen`.", ephemeral=True)
+            await interaction.followup.send(content="⚠️ Ungültiges Datumsformat! Bitte nutze: `01.12.2025`, `morgen` oder `übermorgen`.")
             return
     
     img_buf, weather_info = get_weather(stadt, date_offset)
     if img_buf:
         file = discord.File(img_buf, filename="weather.png")
-        await interaction.response.edit_message(weather_info, file=file, ephemeral=False)
+        await interaction.followup.send(content=weather_info, file=file, ephemeral=True)
     else:
-        await interaction.response.edit_message(weather_info, ephemeral=False)
+        await interaction.followup.send(content=weather_info, ephemeral=True)
 
 
+
+# Prüft alle User, die sich noch nicht verifiziert haben und sendet eine Nachricht an den Admin-Channel mit einem kleinen Bericht
+@client.tree.command(name="verifyreport", description="Schreibt einen Userreport in den Admin-Channel")
+async def verifyreport(interaction: discord.Interaction):
+    guild = interaction.guild
+    #Admin-Channel
+    channel = interaction.guild.get_channel(ADMIN_CHANNEL_ID)
+    channel = interaction.client.get_channel(ADMIN_CHANNEL_ID)
+
+    if channel is None:
+        channel = await interaction.client.fetch_channel(ADMIN_CHANNEL_ID)
+
+    #Wer hat den Befehl ausgeführt?
+    member = interaction.user 
+
+    if int(ADMIN_ROLE_ID) not in [role.id for role in member.roles] or int(MOD_ROLE_ID) not in [role.id for role in member.roles]:
+        msg = await channel.send("Du hast keine Berechtigung für diesen Befehl!")
+        await asyncio.sleep(10)  # Warte 10 Sekunden
+        await msg.delete()  # Lösche die Nachricht
+
+    unverifiedUsersStrings = []
+    for member in guild.members:
+        #Hat der User die Rolle?
+        hat_rolle = False
+        for role in member.roles:
+            if role.id == int(ROLE_ID):
+                hat_rolle = True
+                break
+
+        if not hat_rolle:
+            unverifiedUsersStrings.append(f"'{member.name}' hat sich nicht verifiziert. Am Server seit: {member.joined_at}.")
+
+    if unverifiedUsersStrings:
+        bericht = "**📢 User, die sich noch nicht verifiziert haben:**\n" + "\n".join(unverifiedUsersStrings)
+    else:
+        bericht = "✅ Alle User erfüllen die Anforderungen!"
+
+    #Falls der Bericht mehr als 1999 Zeichen hat, teile ihn in mehrere Nachrichten auf
+    if len(bericht) > 1999:
+        while len(bericht) > 1999:
+            await channel.send(bericht[:1999])
+            bericht = bericht[1999:]
+        await channel.send(bericht)
+    else:
+
+        await channel.send(bericht)
+
+
+@client.tree.command(name="info", description="Gibt Informationen über den Bot aus")
+async def info(interaction: discord.Interaction):
+    embed = discord.Embed(title="🤖 FPV OÖ Bot", description="Ein Discord-Bot für den FPV OÖ Server", color=0x00ff00)
+    embed.add_field(name="Autor", value="Sascha Patschka (NoFear23m)", inline=False)
+    embed.add_field(name="Contributors", value="Christoph Herbolzheimer (Christoph)", inline=False)
+    embed.add_field(name="Version", value=VERSION, inline=False)
+    embed.add_field(name="Github", value="https://github.com/SaschaPatschka/FPV_OOE_Discord-Bot", inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+######### FUNCTIONS #########
 
 async def handle_verification(message):
     guild = client.get_guild(GUILD_ID)
@@ -212,51 +281,6 @@ def get_weather(city: str, date_offset=0):
 
     return None, "⚠️ Konnte die Wetterdaten nicht abrufen. Stelle sicher, dass der Stadtname korrekt ist."
         
-# Prüft alle User, die sich noch nicht verifiziert haben und sendet eine Nachricht an den Admin-Channel mit einem kleinen Bericht
-@client.tree.command(name="verifyreport", description="Schreibt einen Userreport in den Admin-Channel")
-async def verifyreport(interaction: discord.Interaction):
-    guild = interaction.guild
-    #Admin-Channel
-    channel = interaction.guild.get_channel(ADMIN_CHANNEL_ID)
-    channel = interaction.client.get_channel(ADMIN_CHANNEL_ID)
-
-    if channel is None:
-        channel = await interaction.client.fetch_channel(ADMIN_CHANNEL_ID)
-
-    #Wer hat den Befehl ausgeführt?
-    member = interaction.user 
-
-    if int(ADMIN_ROLE_ID) not in [role.id for role in member.roles] or int(MOD_ROLE_ID) not in [role.id for role in member.roles]:
-        msg = await channel.send("Du hast keine Berechtigung für diesen Befehl!")
-        await asyncio.sleep(10)  # Warte 10 Sekunden
-        await msg.delete()  # Lösche die Nachricht
-
-    unverifiedUsersStrings = []
-    for member in guild.members:
-        #Hat der User die Rolle?
-        hat_rolle = False
-        for role in member.roles:
-            if role.id == int(ROLE_ID):
-                hat_rolle = True
-                break
-
-        if not hat_rolle:
-            unverifiedUsersStrings.append(f"'{member.name}' hat sich nicht verifiziert. Am Server seit: {member.joined_at}.")
-
-    if unverifiedUsersStrings:
-        bericht = "**📢 User, die sich noch nicht verifiziert haben:**\n" + "\n".join(unverifiedUsersStrings)
-    else:
-        bericht = "✅ Alle User erfüllen die Anforderungen!"
-
-    #Falls der Bericht mehr als 1999 Zeichen hat, teile ihn in mehrere Nachrichten auf
-    if len(bericht) > 1999:
-        while len(bericht) > 1999:
-            await channel.send(bericht[:1999])
-            bericht = bericht[1999:]
-        await channel.send(bericht)
-    else:
-
-        await channel.send(bericht)
 
 
 
